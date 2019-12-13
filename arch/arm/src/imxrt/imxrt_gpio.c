@@ -493,6 +493,19 @@ static void imxrt_gpio_setoutput(int port, int pin, bool value)
 }
 
 /****************************************************************************
+ * Name: imxrt_gpio_getpin_status
+ ****************************************************************************/
+
+static inline bool imxrt_gpio_get_pinstatus(int port, int pin)
+{
+  uintptr_t regaddr = IMXRT_GPIO_PSR(port);
+  uint32_t regval;
+
+  regval = getreg32(regaddr);
+  return ((regval & GPIO_PIN(pin)) != 0);
+}
+
+/****************************************************************************
  * Name: imxrt_gpio_getinput
  ****************************************************************************/
 
@@ -562,6 +575,7 @@ static int imxrt_gpio_configinput(gpio_pinset_t pinset)
   iomux_pinset_t ioset;
   uintptr_t regaddr;
   unsigned int index;
+  uint32_t sion = 0;
 
   DEBUGASSERT((unsigned int)port < IMXRT_GPIO_NPORTS);
 
@@ -582,8 +596,15 @@ static int imxrt_gpio_configinput(gpio_pinset_t pinset)
     {
       return -EINVAL;
     }
+
   regaddr = imxrt_padmux_address(index);
-  putreg32(PADMUX_MUXMODE_ALT5, regaddr);
+
+  if ((pinset & GPIO_OUTPUT) == GPIO_OUTPUT)
+    {
+      sion |= (pinset & GPIO_SION_MASK) ? PADMUX_SION : 0;
+    }
+
+  putreg32(PADMUX_MUXMODE_ALT5 | sion, regaddr);
 
   imxrt_gpio_select(port, pin);
 
@@ -781,7 +802,16 @@ bool imxrt_gpio_read(gpio_pinset_t pinset)
   DEBUGASSERT((unsigned int)port < IMXRT_GPIO_NPORTS);
 
   flags = enter_critical_section();
-  value = imxrt_gpio_getinput(port, pin);
-  leave_critical_section(flags);
+  if ((pinset & (GPIO_OUTPUT | GPIO_SION_ENABLE)) ==
+                (GPIO_OUTPUT | GPIO_SION_ENABLE))
+    {
+      value = imxrt_gpio_get_pinstatus(port, pin);
+    }
+  else
+    {
+      value = imxrt_gpio_getinput(port, pin);
+    }
+
+    leave_critical_section(flags);
   return value;
 }
